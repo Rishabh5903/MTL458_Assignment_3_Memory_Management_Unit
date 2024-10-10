@@ -4,21 +4,21 @@
 #include <limits>
 using namespace std;
 
-// Custom implementation of singly linked list node
+// Custom implementation of singly linked list node for FIFO
 struct Node {
     unsigned int page;
     Node* next;
     Node(unsigned int p) : page(p), next(nullptr) {}
 };
 
-// Custom implementation of doubly linked list node
+// Custom implementation of doubly linked list node for LRU and LIFO
 struct DoubleNode {
     unsigned int page;
     DoubleNode *prev, *next;
     DoubleNode(unsigned int p) : page(p), prev(nullptr), next(nullptr) {}
 };
 
-// Custom implementation of queue for future accesses in OPT
+// Queue implementation for tracking future page accesses in OPT algorithm
 class Queue {
     int* arr;
     int front, rear, capacity;
@@ -43,8 +43,9 @@ public:
     int front_element() { return (front != -1) ? arr[front] : -1; }
 };
 
+// Max heap implementation for OPT algorithm to track future page references
 class MaxHeap {
-    pair<int, unsigned int>* arr;
+    pair<int, unsigned int>* arr;  // pair of {next_access_time, page_number}
     int size, capacity;
 
     void heapify(int i) {
@@ -67,10 +68,7 @@ public:
     MaxHeap(int cap) : size(0), capacity(cap) {
         arr = new pair<int, unsigned int>[cap];
     }
-    
-    ~MaxHeap() { 
-        delete[] arr; 
-    }
+    ~MaxHeap() { delete[] arr; }
 
     void push(pair<int, unsigned int> x) {
         if (size == capacity) return;
@@ -78,6 +76,7 @@ public:
         int i = size;
         arr[size++] = x;
 
+        // Maintain heap property
         while (i > 0 && arr[(i - 1) / 2].first < arr[i].first) {
             swap(arr[i], arr[(i - 1) / 2]);
             i = (i - 1) / 2;
@@ -85,7 +84,7 @@ public:
     }
 
     pair<int, unsigned int> pop() {
-        if (size <= 0) return {INT_MIN, 0};
+        if (size <= 0) return {-1, 0};
         if (size == 1) {
             size--;
             return arr[0];
@@ -99,39 +98,42 @@ public:
         return root;
     }
 
-    bool empty() const { 
-        return size == 0; 
-    }
+    bool empty() const { return size == 0; }
 
     pair<int, unsigned int> top() const {
         if (size > 0) return arr[0];
-        return {INT_MIN, 0};
+        return {-1, 0};
     }
 };
 
+// Base TLB class with common functionality
 class TLB {
 protected:
     int capacity;
     int size;
-    unsigned int page_size_bits;
+    unsigned int page_size_kb;
+    unsigned int offset_bits;
 
+    // Calculate Virtual Page Number from physical address
     unsigned int getVPN(unsigned int address) {
-        return address >> page_size_bits;
+        return address >> offset_bits;
     }
 
 public:
-    TLB(int cap, int page_size_kb) : capacity(cap), size(0) {
+    TLB(int cap, int page_size_kb) : capacity(cap), size(0), page_size_kb(page_size_kb) {
+        // Calculate number of offset bits based on page size
         unsigned int page_size_bytes = page_size_kb * 1024;
-        page_size_bits = 0;
+        offset_bits = 0;
         while (page_size_bytes > 1) {
             page_size_bytes >>= 1;
-            page_size_bits++;
+            offset_bits++;
         }
     }
     virtual ~TLB() {}
     virtual bool access(unsigned int address) = 0;
 };
 
+// First-In-First-Out (FIFO) TLB implementation
 class FIFO : public TLB {
 private:
     Node *head, *tail;
@@ -148,10 +150,12 @@ public:
         }
     }
 
+    // Returns true if page is in TLB (hit), false otherwise (miss)
     bool access(unsigned int address) override {
         unsigned int vpn = getVPN(address);
         if (page_map.find(vpn) != page_map.end()) return true;
 
+        // If TLB is full, remove oldest page (from head)
         if (size == capacity) {
             Node* temp = head;
             head = head->next;
@@ -160,6 +164,7 @@ public:
             size--;
         }
 
+        // Add new page to tail
         Node* new_node = new Node(vpn);
         if (!head) head = tail = new_node;
         else {
@@ -172,6 +177,7 @@ public:
     }
 };
 
+// Last-In-First-Out (LIFO) TLB implementation
 class LIFO : public TLB {
 private:
     DoubleNode *head;
@@ -190,12 +196,10 @@ public:
 
     bool access(unsigned int address) override {
         unsigned int vpn = getVPN(address);
-        if (page_map.find(vpn) != page_map.end()) {
-            return true;  // Page is in TLB, just return true
-        }
+        if (page_map.find(vpn) != page_map.end()) return true;
 
+        // If TLB is full, remove most recently added page
         if (size == capacity) {
-            // Remove the most recently added page (from the head)
             DoubleNode* temp = head;
             head = head->next;
             if (head) head->prev = nullptr;
@@ -204,7 +208,7 @@ public:
             size--;
         }
 
-        // Add the new page to the head (most recent)
+        // Add new page to head
         DoubleNode* new_node = new DoubleNode(vpn);
         new_node->next = head;
         if (head) head->prev = new_node;
@@ -215,6 +219,7 @@ public:
     }
 };
 
+// Least Recently Used (LRU) TLB implementation
 class LRU : public TLB {
 private:
     DoubleNode *head, *tail;
@@ -234,13 +239,12 @@ public:
     bool access(unsigned int address) override {
         unsigned int vpn = getVPN(address);
         if (page_map.find(vpn) != page_map.end()) {
+            // Move accessed page to front (most recently used)
             DoubleNode* node = page_map[vpn];
             if (node != head) {
-                // Remove node from its current position
                 if (node->prev) node->prev->next = node->next;
                 if (node->next) node->next->prev = node->prev;
                 if (node == tail) tail = node->prev;
-                // Move node to head
                 node->next = head;
                 node->prev = nullptr;
                 head->prev = node;
@@ -249,6 +253,7 @@ public:
             return true;
         }
 
+        // If TLB is full, remove least recently used page (from tail)
         if (size == capacity) {
             DoubleNode* temp = tail;
             tail = tail->prev;
@@ -259,6 +264,7 @@ public:
             size--;
         }
 
+        // Add new page to head
         DoubleNode* new_node = new DoubleNode(vpn);
         new_node->next = head;
         if (head) head->prev = new_node;
@@ -270,6 +276,7 @@ public:
     }
 };
 
+// Optimal (OPT) TLB implementation
 class OPT : public TLB {
 private:
     unordered_map<unsigned int, Queue*> future_map;
@@ -278,21 +285,12 @@ private:
     int current_index;
     int sequence_size;
 
-    void printTLBContents() {
-        cout << "TLB contents: ";
-        for (const auto& pair : page_map) {
-            if (pair.second) {
-                cout << hex << pair.first << " ";
-            }
-        }
-        cout << dec << endl;
-    }
-
 public:
     OPT(int cap, int page_size, unsigned int* sequence, int seq_size) 
         : TLB(cap, page_size), current_index(0), sequence_size(seq_size) {
-        heap = new MaxHeap(cap * 10);  // Larger capacity to handle duplicates
+        heap = new MaxHeap(cap * 10);
         
+        // Initialize future access information for each page
         for (int i = 0; i < seq_size; i++) {
             unsigned int vpn = getVPN(sequence[i]);
             if (future_map.find(vpn) == future_map.end()) {
@@ -312,39 +310,30 @@ public:
     bool access(unsigned int address) override {
         unsigned int vpn = getVPN(address);
         
-        cout << "Accessing address: 0x" << hex << address << " (VPN: 0x" << vpn << ")" << dec << endl;
-
         if (page_map.find(vpn) != page_map.end()) {
             updatePage(vpn);
             current_index++;
-            cout << "Hit! ";
-            printTLBContents();
             return true;
         }
 
-        cout << "Miss! ";
-
         if (page_map.size() == capacity) {
+            // Find the page that will be accessed furthest in the future
             pair<int, unsigned int> top;
             do {
                 top = heap->pop();
             } while (page_map.find(top.second) == page_map.end());
             
-            cout << "Evicting page: 0x" << hex << top.second << dec 
-                 << " (next access: " << top.first << ")" << endl;
             page_map.erase(top.second);
         }
 
         page_map[vpn] = true;
         updatePage(vpn);
         current_index++;
-
-        cout << "After insertion: ";
-        printTLBContents();
         return false;
     }
 
 private:
+    // Update future access information for a page
     void updatePage(unsigned int vpn) {
         Queue* future_queue = future_map[vpn];
         
@@ -354,18 +343,19 @@ private:
 
         int next_access = future_queue->empty() ? INT_MAX : future_queue->front_element();
         heap->push({next_access, vpn});
-        cout << "Updated future access for page 0x" << hex << vpn << ": " << dec << next_access << endl;
     }
 };
 
+// Main simulation function to test different TLB replacement policies
 void simulate(unsigned int* addresses, int N, int address_space_size, int page_size, int tlb_size) {
     FIFO fifo_tlb(tlb_size, page_size);
     LIFO lifo_tlb(tlb_size, page_size);
     LRU lru_tlb(tlb_size, page_size);
     OPT opt_tlb(tlb_size, page_size, addresses, N);
     
-    int hits[4] = {0};
+    int hits[4] = {0};  // Track hits for each algorithm
     
+    // Process each address through all TLB implementations
     for (int i = 0; i < N; i++) {
         if (fifo_tlb.access(addresses[i])) hits[0]++;
         if (lifo_tlb.access(addresses[i])) hits[1]++;
@@ -373,12 +363,13 @@ void simulate(unsigned int* addresses, int N, int address_space_size, int page_s
         if (opt_tlb.access(addresses[i])) hits[3]++;
     }
     
+    // Output results: FIFO, LIFO, LRU, OPT hits
     cout << hits[0] << " " << hits[1] << " " << hits[2] << " " << hits[3] << endl;
 }
 
 int main() {
     int T;
-    cin >> T;
+    cin >> T;  // Number of test cases
     
     while (T--) {
         int address_space_size_mb, page_size_kb, tlb_size, N;
@@ -387,20 +378,16 @@ int main() {
         // Convert address space size from MB to bytes
         unsigned long long address_space_size = static_cast<unsigned long long>(address_space_size_mb) * 1024 * 1024;
         
-        // Dynamically allocate memory for addresses
-        unsigned int* addresses = new unsigned int[N];  // Change to unsigned int for addresses
+        // Read addresses in hexadecimal format
+        unsigned int* addresses = new unsigned int[N];
         for (int i = 0; i < N; i++) {
-            cin >> hex >> addresses[i]; // Read hexadecimal input directly into addresses
+            cin >> hex >> addresses[i];
         }
         
-        // Call the simulate function
         simulate(addresses, N, address_space_size, page_size_kb, tlb_size);
         
-        // Free allocated memory
         delete[] addresses;
-        
-        // Reset input mode to decimal for further input
-        cin >> dec; // Ensure further inputs are treated as decimal
+        cin >> dec;  // Reset to decimal mode for next test case
     }
     
     return 0;
