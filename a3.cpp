@@ -40,48 +40,48 @@ public:
         return x;
     }
     bool empty() { return front == -1; }
+    int front_element() { return (front != -1) ? arr[front] : -1; }
 };
 
-// Custom implementation of min heap for OPT
-class MinHeap {
+class MaxHeap {
     pair<int, unsigned int>* arr;
     int size, capacity;
 
     void heapify(int i) {
-        int smallest = i;
+        int largest = i;
         int left = 2 * i + 1;
         int right = 2 * i + 2;
 
-        if (left < size && arr[left].first < arr[smallest].first)
-            smallest = left;
-        if (right < size && arr[right].first < arr[smallest].first)
-            smallest = right;
+        if (left < size && arr[left].first > arr[largest].first)
+            largest = left;
+        if (right < size && arr[right].first > arr[largest].first)
+            largest = right;
 
-        if (smallest != i) {
-            swap(arr[i], arr[smallest]);
-            heapify(smallest);
+        if (largest != i) {
+            swap(arr[i], arr[largest]);
+            heapify(largest);
         }
     }
 
 public:
-    MinHeap(int cap) : size(0), capacity(cap) {
+    MaxHeap(int cap) : size(0), capacity(cap) {
         arr = new pair<int, unsigned int>[cap];
     }
-    ~MinHeap() { delete[] arr; }
+    ~MaxHeap() { delete[] arr; }
 
     void push(pair<int, unsigned int> x) {
         if (size == capacity) return;
         int i = size;
         arr[size++] = x;
 
-        while (i > 0 && arr[(i - 1) / 2].first > arr[i].first) {
+        while (i > 0 && arr[(i - 1) / 2].first < arr[i].first) {
             swap(arr[i], arr[(i - 1) / 2]);
             i = (i - 1) / 2;
         }
     }
 
     pair<int, unsigned int> pop() {
-        if (size <= 0) return {INT_MAX, 0};
+        if (size <= 0) return {INT_MIN, 0};
         if (size == 1) {
             size--;
             return arr[0];
@@ -99,7 +99,7 @@ public:
         for (int i = 0; i < size; i++) {
             if (arr[i].second == page) {
                 arr[i].first = new_time;
-                while (i > 0 && arr[(i - 1) / 2].first > arr[i].first) {
+                while (i > 0 && arr[(i - 1) / 2].first < arr[i].first) {
                     swap(arr[i], arr[(i - 1) / 2]);
                     i = (i - 1) / 2;
                 }
@@ -107,6 +107,15 @@ public:
                 break;
             }
         }
+    }
+
+    bool empty() const {
+        return size == 0;
+    }
+
+    pair<int, unsigned int> top() const {
+        if (size > 0) return arr[0];
+        return {INT_MIN, 0};
     }
 };
 
@@ -273,23 +282,19 @@ public:
 class OPT : public TLB {
 private:
     unordered_map<unsigned int, Queue*> future_map;
-    MinHeap* heap;
-    int* access_sequence;
-    int sequence_size;
-    int current_index;
+    MaxHeap* heap;
     unordered_map<unsigned int, bool> page_map;
+    int current_index;
+    int sequence_size;
 
 public:
     OPT(int cap, int page_size, unsigned int* sequence, int seq_size) 
-        : TLB(cap, page_size), sequence_size(seq_size), current_index(0) {
-        heap = new MinHeap(cap);
-        access_sequence = new int[seq_size];
+        : TLB(cap, page_size), current_index(0), sequence_size(seq_size) {
+        heap = new MaxHeap(cap);
+        
+        // Preprocessing: Build future_map
         for (int i = 0; i < seq_size; i++) {
-            access_sequence[i] = sequence[i];
-        }
-
-        for (int i = 0; i < seq_size; i++) {
-            unsigned int vpn = getVPN(access_sequence[i]);
+            unsigned int vpn = getVPN(sequence[i]);
             if (future_map.find(vpn) == future_map.end()) {
                 future_map[vpn] = new Queue(seq_size);
             }
@@ -299,7 +304,6 @@ public:
 
     ~OPT() {
         delete heap;
-        delete[] access_sequence;
         for (auto& pair : future_map) {
             delete pair.second;
         }
@@ -307,6 +311,7 @@ public:
 
     bool access(unsigned int address) override {
         unsigned int vpn = getVPN(address);
+        
         if (page_map.find(vpn) != page_map.end()) {
             updatePage(vpn);
             current_index++;
@@ -314,9 +319,15 @@ public:
         }
 
         if (size == capacity) {
-            auto victim = heap->pop();
-            page_map.erase(victim.second);
-            size--;
+            // Evict the page with the farthest future access
+            while (!heap->empty()) {
+                auto [next_access, page] = heap->pop();
+                if (page_map[page]) {
+                    page_map.erase(page);
+                    size--;
+                    break;
+                }
+            }
         }
 
         page_map[vpn] = true;
@@ -328,8 +339,11 @@ public:
 
 private:
     void updatePage(unsigned int vpn) {
-        future_map[vpn]->pop();
-        int next_access = future_map[vpn]->empty() ? INT_MAX : future_map[vpn]->pop();
+        future_map[vpn]->pop(); // Remove the current access
+        int next_access = INT_MAX;
+        if (!future_map[vpn]->empty()) {
+            next_access = future_map[vpn]->front_element();
+        }
         heap->push({next_access, vpn});
     }
 };
