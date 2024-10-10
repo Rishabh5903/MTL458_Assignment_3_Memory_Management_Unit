@@ -1,395 +1,363 @@
 #include <iostream>
+#include <unordered_map>
+#include <climits>
+#include <limits>
 using namespace std;
 
-template<typename T>
-class Vector {
-private:
-    T* arr;
-    int capacity;
-    int current;
-
-public:
-    Vector() {
-        arr = new T[1];
-        capacity = 1;
-        current = 0;
-    }
-
-    Vector(int size, T default_value) {
-        capacity = size;
-        arr = new T[capacity];
-        current = size;
-        for (int i = 0; i < size; i++) {
-            arr[i] = default_value;
-        }
-    }
-
-    ~Vector() {
-        delete[] arr;
-    }
-
-    void push_back(T data) {
-        if (current == capacity) {
-            T* temp = new T[2 * capacity];
-            for (int i = 0; i < capacity; i++) {
-                temp[i] = arr[i];
-            }
-            delete[] arr;
-            capacity *= 2;
-            arr = temp;
-        }
-        arr[current] = data;
-        current++;
-    }
-
-    T& operator[](int index) {
-        return arr[index];
-    }
-
-    const T& operator[](int index) const {
-        return arr[index];
-    }
-
-    void pop_back() {
-        if (current > 0) current--;
-    }
-
-    int size() const {
-        return current;
-    }
-
-    void clear() {
-        current = 0;
-    }
+// Custom implementation of singly linked list node
+struct Node {
+    unsigned int page;
+    Node* next;
+    Node(unsigned int p) : page(p), next(nullptr) {}
 };
 
-template<typename T>
+// Custom implementation of doubly linked list node
+struct DoubleNode {
+    unsigned int page;
+    DoubleNode *prev, *next;
+    DoubleNode(unsigned int p) : page(p), prev(nullptr), next(nullptr) {}
+};
+
+// Custom implementation of queue for future accesses in OPT
 class Queue {
-private:
-    struct Node {
-        T data;
-        Node* next;
-        Node(T value) : data(value), next(nullptr) {}
-    };
-    Node* front;
-    Node* rear;
-    int size;
-
+    int* arr;
+    int front, rear, capacity;
 public:
-    Queue() : front(nullptr), rear(nullptr), size(0) {}
-
-    ~Queue() {
-        while (!isEmpty()) {
-            dequeue();
-        }
+    Queue(int size) : front(-1), rear(-1), capacity(size) {
+        arr = new int[size];
     }
-
-    void enqueue(T value) {
-        Node* newNode = new Node(value);
-        if (isEmpty()) {
-            front = rear = newNode;
-        } else {
-            rear->next = newNode;
-            rear = newNode;
-        }
-        size++;
+    ~Queue() { delete[] arr; }
+    void push(int x) {
+        if (rear == capacity - 1) return;
+        if (front == -1) front = 0;
+        arr[++rear] = x;
     }
-
-    T dequeue() {
-        if (isEmpty()) {
-            return T();
-        }
-        Node* temp = front;
-        T value = temp->data;
-        front = front->next;
-        delete temp;
-        size--;
-        if (isEmpty()) {
-            rear = nullptr;
-        }
-        return value;
+    int pop() {
+        if (front == -1) return -1;
+        int x = arr[front];
+        if (front == rear) front = rear = -1;
+        else front++;
+        return x;
     }
-
-    T peek() const {
-        if (isEmpty()) {
-            return T();
-        }
-        return front->data;
-    }
-
-    bool isEmpty() const {
-        return size == 0;
-    }
-
-    int getSize() const {
-        return size;
-    }
+    bool empty() { return front == -1; }
 };
 
+// Custom implementation of min heap for OPT
+class MinHeap {
+    pair<int, unsigned int>* arr;
+    int size, capacity;
 
-template<typename K, typename V>
-class UnorderedMap {
-private:
-    static const int TABLE_SIZE = 10007;
-    struct Node {
-        K key;
-        V value;
-        Node* next;
-        Node(K k, V v) : key(k), value(v), next(nullptr) {}
-    };
-    Vector<Node*> table;
-    int count;
+    void heapify(int i) {
+        int smallest = i;
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+
+        if (left < size && arr[left].first < arr[smallest].first)
+            smallest = left;
+        if (right < size && arr[right].first < arr[smallest].first)
+            smallest = right;
+
+        if (smallest != i) {
+            swap(arr[i], arr[smallest]);
+            heapify(smallest);
+        }
+    }
 
 public:
-    UnorderedMap() : count(0) {
-        for (int i = 0; i < TABLE_SIZE; i++) {
-            table.push_back(nullptr);
+    MinHeap(int cap) : size(0), capacity(cap) {
+        arr = new pair<int, unsigned int>[cap];
+    }
+    ~MinHeap() { delete[] arr; }
+
+    void push(pair<int, unsigned int> x) {
+        if (size == capacity) return;
+        int i = size;
+        arr[size++] = x;
+
+        while (i > 0 && arr[(i - 1) / 2].first > arr[i].first) {
+            swap(arr[i], arr[(i - 1) / 2]);
+            i = (i - 1) / 2;
         }
     }
 
-    void insert(K key, V value) {
-        int index = key % TABLE_SIZE;
-        Node* current = table[index];
-        while (current != nullptr) {
-            if (current->key == key) {
-                current->value = value;
-                return;
-            }
-            current = current->next;
+    pair<int, unsigned int> pop() {
+        if (size <= 0) return {INT_MAX, 0};
+        if (size == 1) {
+            size--;
+            return arr[0];
         }
-        Node* newNode = new Node(key, value);
-        newNode->next = table[index];
-        table[index] = newNode;
-        count++;
+
+        pair<int, unsigned int> root = arr[0];
+        arr[0] = arr[size - 1];
+        size--;
+        heapify(0);
+
+        return root;
     }
 
-    bool contains(K key) const {
-        int index = key % TABLE_SIZE;
-        Node* current = table[index];
-        while (current != nullptr) {
-            if (current->key == key) return true;
-            current = current->next;
-        }
-        return false;
-    }
-
-    V get(K key) const {
-        int index = key % TABLE_SIZE;
-        Node* current = table[index];
-        while (current != nullptr) {
-            if (current->key == key) return current->value;
-            current = current->next;
-        }
-        return V();
-    }
-
-    void erase(K key) {
-        int index = key % TABLE_SIZE;
-        Node* current = table[index];
-        Node* prev = nullptr;
-        while (current != nullptr) {
-            if (current->key == key) {
-                if (prev == nullptr) {
-                    table[index] = current->next;
-                } else {
-                    prev->next = current->next;
+    void update(unsigned int page, int new_time) {
+        for (int i = 0; i < size; i++) {
+            if (arr[i].second == page) {
+                arr[i].first = new_time;
+                while (i > 0 && arr[(i - 1) / 2].first > arr[i].first) {
+                    swap(arr[i], arr[(i - 1) / 2]);
+                    i = (i - 1) / 2;
                 }
-                delete current;
-                count--;
-                return;
+                heapify(i);
+                break;
             }
-            prev = current;
-            current = current->next;
         }
-    }
-
-    int size() const {
-        return count;
-    }
-
-    void clear() {
-        for (int i = 0; i < TABLE_SIZE; i++) {
-            Node* current = table[i];
-            while (current != nullptr) {
-                Node* temp = current;
-                current = current->next;
-                delete temp;
-            }
-            table[i] = nullptr;
-        }
-        count = 0;
     }
 };
 
 class TLB {
 protected:
+    int capacity;
     int size;
-    UnorderedMap<unsigned int, unsigned int> entries;
+    unsigned int page_size_bits;
+
+    unsigned int getVPN(unsigned int address) {
+        return address >> page_size_bits;
+    }
 
 public:
-    TLB(int s) : size(s) {}
+    TLB(int cap, int page_size) : capacity(cap), size(0) {
+        page_size_bits = 0;
+        while (page_size > 1) {
+            page_size >>= 1;
+            page_size_bits++;
+        }
+    }
     virtual ~TLB() {}
-    virtual bool access(unsigned int page_number, unsigned int frame_number) = 0;
-    bool contains(unsigned int page_number) const { return entries.contains(page_number); }
-    virtual void clear() { entries.clear(); }
+    virtual bool access(unsigned int address) = 0;
 };
 
-class FIFO_TLB : public TLB {
+class FIFO : public TLB {
 private:
-    Queue<unsigned int> order;
+    Node *head, *tail;
+    unordered_map<unsigned int, Node*> page_map;
 
 public:
-    FIFO_TLB(int s) : TLB(s) {}
+    FIFO(int cap, int page_size) : TLB(cap, page_size), head(nullptr), tail(nullptr) {}
 
-    bool access(unsigned int page_number, unsigned int frame_number) override {
-        if (contains(page_number)) return true;
-        if (entries.size() == size) {
-            entries.erase(order.dequeue());
+    ~FIFO() {
+        while (head) {
+            Node* temp = head;
+            head = head->next;
+            delete temp;
         }
-        entries.insert(page_number, frame_number);
-        order.enqueue(page_number);
+    }
+
+    bool access(unsigned int address) override {
+        unsigned int vpn = getVPN(address);
+        if (page_map.find(vpn) != page_map.end()) return true;
+
+        if (size == capacity) {
+            Node* temp = head;
+            head = head->next;
+            page_map.erase(temp->page);
+            delete temp;
+            size--;
+        }
+
+        Node* new_node = new Node(vpn);
+        if (!head) head = tail = new_node;
+        else {
+            tail->next = new_node;
+            tail = new_node;
+        }
+        page_map[vpn] = new_node;
+        size++;
         return false;
     }
-
-    void clear() override {
-        TLB::clear();
-        while (!order.isEmpty()) {
-            order.dequeue();
-        }
-    }
 };
 
-class LIFO_TLB : public TLB {
+class LIFO : public TLB {
 private:
-    Vector<unsigned int> stack;
+    DoubleNode *head;
+    unordered_map<unsigned int, DoubleNode*> page_map;
 
 public:
-    LIFO_TLB(int s) : TLB(s) {}
+    LIFO(int cap, int page_size) : TLB(cap, page_size), head(nullptr) {}
 
-    bool access(unsigned int page_number, unsigned int frame_number) override {
-        if (contains(page_number)) return true;
-        if (entries.size() == size) {
-            entries.erase(stack[stack.size() - 1]);
-            stack.pop_back();
+    ~LIFO() {
+        while (head) {
+            DoubleNode* temp = head;
+            head = head->next;
+            delete temp;
         }
-        entries.insert(page_number, frame_number);
-        stack.push_back(page_number);
-        return false;
     }
 
-    void clear() override {
-        TLB::clear();
-        stack.clear();
-    }
-};
-
-class LRU_TLB : public TLB {
-private:
-    Vector<unsigned int> order;
-
-public:
-    LRU_TLB(int s) : TLB(s) {}
-
-    bool access(unsigned int page_number, unsigned int frame_number) override {
-        for (int i = 0; i < order.size(); i++) {
-            if (order[i] == page_number) {
-                for (int j = i; j < order.size() - 1; j++) {
-                    order[j] = order[j + 1];
-                }
-                order[order.size() - 1] = page_number;
-                return true;
+    bool access(unsigned int address) override {
+        unsigned int vpn = getVPN(address);
+        if (page_map.find(vpn) != page_map.end()) {
+            DoubleNode* node = page_map[vpn];
+            if (node != head) {
+                // Remove node from its current position
+                if (node->prev) node->prev->next = node->next;
+                if (node->next) node->next->prev = node->prev;
+                // Move node to head
+                node->next = head;
+                node->prev = nullptr;
+                head->prev = node;
+                head = node;
             }
+            return true;
         }
-        
-        if (entries.size() == size) {
-            entries.erase(order[0]);
-            for (int i = 0; i < order.size() - 1; i++) {
-                order[i] = order[i + 1];
-            }
-            order[order.size() - 1] = page_number;
-        } else {
-            order.push_back(page_number);
-        }
-        
-        entries.insert(page_number, frame_number);
-        return false;
-    }
 
-    void clear() override {
-        TLB::clear();
-        order.clear();
+        if (size == capacity) {
+            DoubleNode* temp = head;
+            head = head->next;
+            if (head) head->prev = nullptr;
+            page_map.erase(temp->page);
+            delete temp;
+            size--;
+        }
+
+        DoubleNode* new_node = new DoubleNode(vpn);
+        new_node->next = head;
+        if (head) head->prev = new_node;
+        head = new_node;
+        page_map[vpn] = new_node;
+        size++;
+        return false;
     }
 };
 
-class OPT_TLB : public TLB {
+class LRU : public TLB {
 private:
-    const Vector<unsigned int>& future_accesses;
+    DoubleNode *head, *tail;
+    unordered_map<unsigned int, DoubleNode*> page_map;
+
+public:
+    LRU(int cap, int page_size) : TLB(cap, page_size), head(nullptr), tail(nullptr) {}
+
+    ~LRU() {
+        while (head) {
+            DoubleNode* temp = head;
+            head = head->next;
+            delete temp;
+        }
+    }
+
+    bool access(unsigned int address) override {
+        unsigned int vpn = getVPN(address);
+        if (page_map.find(vpn) != page_map.end()) {
+            DoubleNode* node = page_map[vpn];
+            if (node != head) {
+                // Remove node from its current position
+                if (node->prev) node->prev->next = node->next;
+                if (node->next) node->next->prev = node->prev;
+                if (node == tail) tail = node->prev;
+                // Move node to head
+                node->next = head;
+                node->prev = nullptr;
+                head->prev = node;
+                head = node;
+            }
+            return true;
+        }
+
+        if (size == capacity) {
+            DoubleNode* temp = tail;
+            tail = tail->prev;
+            if (tail) tail->next = nullptr;
+            else head = nullptr;
+            page_map.erase(temp->page);
+            delete temp;
+            size--;
+        }
+
+        DoubleNode* new_node = new DoubleNode(vpn);
+        new_node->next = head;
+        if (head) head->prev = new_node;
+        head = new_node;
+        if (!tail) tail = new_node;
+        page_map[vpn] = new_node;
+        size++;
+        return false;
+    }
+};
+
+class OPT : public TLB {
+private:
+    unordered_map<unsigned int, Queue*> future_map;
+    MinHeap* heap;
+    int* access_sequence;
+    int sequence_size;
     int current_index;
+    unordered_map<unsigned int, bool> page_map;
 
 public:
-    OPT_TLB(int s, const Vector<unsigned int>& fa) 
-        : TLB(s), future_accesses(fa), current_index(0) {}
+    OPT(int cap, int page_size, unsigned int* sequence, int seq_size) 
+        : TLB(cap, page_size), sequence_size(seq_size), current_index(0) {
+        heap = new MinHeap(cap);
+        access_sequence = new int[seq_size];
+        for (int i = 0; i < seq_size; i++) {
+            access_sequence[i] = sequence[i];
+        }
 
-    bool access(unsigned int page_number, unsigned int frame_number) override {
-        if (contains(page_number)) {
+        for (int i = 0; i < seq_size; i++) {
+            unsigned int vpn = getVPN(access_sequence[i]);
+            if (future_map.find(vpn) == future_map.end()) {
+                future_map[vpn] = new Queue(seq_size);
+            }
+            future_map[vpn]->push(i);
+        }
+    }
+
+    ~OPT() {
+        delete heap;
+        delete[] access_sequence;
+        for (auto& pair : future_map) {
+            delete pair.second;
+        }
+    }
+
+    bool access(unsigned int address) override {
+        unsigned int vpn = getVPN(address);
+        if (page_map.find(vpn) != page_map.end()) {
+            updatePage(vpn);
             current_index++;
             return true;
         }
-        
-        if (entries.size() == size) {
-            entries.erase(find_victim());
+
+        if (size == capacity) {
+            auto victim = heap->pop();
+            page_map.erase(victim.second);
+            size--;
         }
-        
-        entries.insert(page_number, frame_number);
+
+        page_map[vpn] = true;
+        size++;
+        updatePage(vpn);
         current_index++;
         return false;
     }
 
-    unsigned int find_victim() {
-        unsigned int victim = 0;
-        int max_future = -1;
-        
-        for (int i = 0; i < future_accesses.size(); i++) {
-            if (entries.contains(future_accesses[i])) {
-                int future_index = -1;
-                for (int j = current_index; j < future_accesses.size(); j++) {
-                    if (future_accesses[j] == future_accesses[i]) {
-                        future_index = j;
-                        break;
-                    }
-                }
-                if (future_index == -1 || future_index > max_future) {
-                    max_future = future_index;
-                    victim = future_accesses[i];
-                }
-            }
-        }
-        return victim;
-    }
-
-    void clear() override {
-        TLB::clear();
-        current_index = 0;
+private:
+    void updatePage(unsigned int vpn) {
+        future_map[vpn]->pop();
+        int next_access = future_map[vpn]->empty() ? INT_MAX : future_map[vpn]->pop();
+        heap->push({next_access, vpn});
     }
 };
 
-void simulate(const Vector<unsigned int>& addresses, int address_space_size, int page_size, int tlb_size) {
+void simulate(unsigned int* addresses, int N, int address_space_size, int page_size, int tlb_size) {
     unsigned int p_bytes = page_size * 1024;
     
-    FIFO_TLB fifo_tlb(tlb_size);
-    LIFO_TLB lifo_tlb(tlb_size);
-    LRU_TLB lru_tlb(tlb_size);
-    OPT_TLB opt_tlb(tlb_size, addresses);
+    FIFO fifo_tlb(tlb_size, page_size);
+    LIFO lifo_tlb(tlb_size, page_size);
+    LRU lru_tlb(tlb_size, page_size);
+    OPT opt_tlb(tlb_size, page_size, addresses, N);
     
-    Vector<int> hits(4, 0);
+    int hits[4] = {0};
     
-    for (int i = 0; i < addresses.size(); i++) {
-        unsigned int page_number = addresses[i] / p_bytes;
-        
-        if (fifo_tlb.access(page_number, page_number)) hits[0]++;
-        if (lifo_tlb.access(page_number, page_number)) hits[1]++;
-        if (lru_tlb.access(page_number, page_number)) hits[2]++;
-        if (opt_tlb.access(page_number, page_number)) hits[3]++;
+    for (int i = 0; i < N; i++) {
+        if (fifo_tlb.access(addresses[i])) hits[0]++;
+        if (lifo_tlb.access(addresses[i])) hits[1]++;
+        if (lru_tlb.access(addresses[i])) hits[2]++;
+        if (opt_tlb.access(addresses[i])) hits[3]++;
     }
     
     cout << hits[0] << " " << hits[1] << " " << hits[2] << " " << hits[3] << endl;
@@ -399,18 +367,27 @@ int main() {
     int T;
     cin >> T;
     
-    for (int t = 0; t < T; t++) {
-        int address_space_size, page_size, tlb_size, N;
-        cin >> address_space_size >> page_size >> tlb_size >> N;
+    while (T--) {
+        int address_space_size_mb, page_size_kb, tlb_size, N;
+        cin >> address_space_size_mb >> page_size_kb >> tlb_size >> N;
         
-        Vector<unsigned int> addresses;
+        // Convert address space size from MB to bytes
+        unsigned long long address_space_size = static_cast<unsigned long long>(address_space_size_mb) * 1024 * 1024;
+        
+        // Dynamically allocate memory for addresses
+        unsigned int* addresses = new unsigned int[N];  // Change to unsigned int for addresses
         for (int i = 0; i < N; i++) {
-            unsigned int address;
-            cin >> hex >> address;
-            addresses.push_back(address);
+            cin >> hex >> addresses[i]; // Read hexadecimal input directly into addresses
         }
         
-        simulate(addresses, address_space_size, page_size, tlb_size);
+        // Call the simulate function
+        simulate(addresses, N, address_space_size, page_size_kb, tlb_size);
+        
+        // Free allocated memory
+        delete[] addresses;
+        
+        // Reset input mode to decimal for further input
+        cin >> dec; // Ensure further inputs are treated as decimal
     }
     
     return 0;
