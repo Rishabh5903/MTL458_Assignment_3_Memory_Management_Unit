@@ -67,10 +67,14 @@ public:
     MaxHeap(int cap) : size(0), capacity(cap) {
         arr = new pair<int, unsigned int>[cap];
     }
-    ~MaxHeap() { delete[] arr; }
+    
+    ~MaxHeap() { 
+        delete[] arr; 
+    }
 
     void push(pair<int, unsigned int> x) {
         if (size == capacity) return;
+        
         int i = size;
         arr[size++] = x;
 
@@ -95,22 +99,8 @@ public:
         return root;
     }
 
-    void update(unsigned int page, int new_time) {
-        for (int i = 0; i < size; i++) {
-            if (arr[i].second == page) {
-                arr[i].first = new_time;
-                while (i > 0 && arr[(i - 1) / 2].first < arr[i].first) {
-                    swap(arr[i], arr[(i - 1) / 2]);
-                    i = (i - 1) / 2;
-                }
-                heapify(i);
-                break;
-            }
-        }
-    }
-
-    bool empty() const {
-        return size == 0;
+    bool empty() const { 
+        return size == 0; 
     }
 
     pair<int, unsigned int> top() const {
@@ -287,12 +277,21 @@ private:
     int current_index;
     int sequence_size;
 
+    void printTLBContents() {
+        cout << "TLB contents: ";
+        for (const auto& pair : page_map) {
+            if (pair.second) {
+                cout << hex << pair.first << " ";
+            }
+        }
+        cout << dec << endl;
+    }
+
 public:
     OPT(int cap, int page_size, unsigned int* sequence, int seq_size) 
         : TLB(cap, page_size), current_index(0), sequence_size(seq_size) {
-        heap = new MaxHeap(cap);
+        heap = new MaxHeap(cap * 10);  // Larger capacity to handle duplicates
         
-        // Preprocessing: Build future_map
         for (int i = 0; i < seq_size; i++) {
             unsigned int vpn = getVPN(sequence[i]);
             if (future_map.find(vpn) == future_map.end()) {
@@ -312,39 +311,49 @@ public:
     bool access(unsigned int address) override {
         unsigned int vpn = getVPN(address);
         
+        cout << "Accessing address: 0x" << hex << address << " (VPN: 0x" << vpn << ")" << dec << endl;
+
         if (page_map.find(vpn) != page_map.end()) {
             updatePage(vpn);
             current_index++;
+            cout << "Hit! ";
+            printTLBContents();
             return true;
         }
 
-        if (size == capacity) {
-            // Evict the page with the farthest future access
-            while (!heap->empty()) {
-                auto [next_access, page] = heap->pop();
-                if (page_map[page]) {
-                    page_map.erase(page);
-                    size--;
-                    break;
-                }
-            }
+        cout << "Miss! ";
+
+        if (page_map.size() == capacity) {
+            pair<int, unsigned int> top;
+            do {
+                top = heap->pop();
+            } while (page_map.find(top.second) == page_map.end());
+            
+            cout << "Evicting page: 0x" << hex << top.second << dec 
+                 << " (next access: " << top.first << ")" << endl;
+            page_map.erase(top.second);
         }
 
         page_map[vpn] = true;
-        size++;
         updatePage(vpn);
         current_index++;
+
+        cout << "After insertion: ";
+        printTLBContents();
         return false;
     }
 
 private:
     void updatePage(unsigned int vpn) {
-        future_map[vpn]->pop(); // Remove the current access
-        int next_access = INT_MAX;
-        if (!future_map[vpn]->empty()) {
-            next_access = future_map[vpn]->front_element();
+        Queue* future_queue = future_map[vpn];
+        
+        if (!future_queue->empty() && future_queue->front_element() <= current_index) {
+            future_queue->pop();
         }
+
+        int next_access = future_queue->empty() ? INT_MAX : future_queue->front_element();
         heap->push({next_access, vpn});
+        cout << "Updated future access for page 0x" << hex << vpn << ": " << dec << next_access << endl;
     }
 };
 
