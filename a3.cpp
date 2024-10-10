@@ -120,10 +120,11 @@ protected:
     }
 
 public:
-    TLB(int cap, int page_size) : capacity(cap), size(0) {
+    TLB(int cap, int page_size_kb) : capacity(cap), size(0) {
+        unsigned int page_size_bytes = page_size_kb * 1024;
         page_size_bits = 0;
-        while (page_size > 1) {
-            page_size >>= 1;
+        while (page_size_bytes > 1) {
+            page_size_bytes >>= 1;
             page_size_bits++;
         }
     }
@@ -358,8 +359,6 @@ private:
 };
 
 void simulate(unsigned int* addresses, int N, int address_space_size, int page_size, int tlb_size) {
-    unsigned int p_bytes = page_size * 1024;
-    
     FIFO fifo_tlb(tlb_size, page_size);
     LIFO lifo_tlb(tlb_size, page_size);
     LRU lru_tlb(tlb_size, page_size);
