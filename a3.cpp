@@ -191,21 +191,11 @@ public:
     bool access(unsigned int address) override {
         unsigned int vpn = getVPN(address);
         if (page_map.find(vpn) != page_map.end()) {
-            DoubleNode* node = page_map[vpn];
-            if (node != head) {
-                // Remove node from its current position
-                if (node->prev) node->prev->next = node->next;
-                if (node->next) node->next->prev = node->prev;
-                // Move node to head
-                node->next = head;
-                node->prev = nullptr;
-                head->prev = node;
-                head = node;
-            }
-            return true;
+            return true;  // Page is in TLB, just return true
         }
 
         if (size == capacity) {
+            // Remove the most recently added page (from the head)
             DoubleNode* temp = head;
             head = head->next;
             if (head) head->prev = nullptr;
@@ -214,6 +204,7 @@ public:
             size--;
         }
 
+        // Add the new page to the head (most recent)
         DoubleNode* new_node = new DoubleNode(vpn);
         new_node->next = head;
         if (head) head->prev = new_node;
