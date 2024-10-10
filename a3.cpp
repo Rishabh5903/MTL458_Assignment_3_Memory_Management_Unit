@@ -288,7 +288,7 @@ private:
 public:
     OPT(int cap, int page_size, unsigned int* sequence, int seq_size) 
         : TLB(cap, page_size), current_index(0), sequence_size(seq_size) {
-        heap = new MaxHeap(cap * 10);
+        heap = new MaxHeap(seq_size);
         
         // Initialize future access information for each page
         for (int i = 0; i < seq_size; i++) {
@@ -317,12 +317,8 @@ public:
         }
 
         if (page_map.size() == capacity) {
-            // Find the page that will be accessed furthest in the future
-            pair<int, unsigned int> top;
-            do {
-                top = heap->pop();
-            } while (page_map.find(top.second) == page_map.end());
-            
+            // The top of heap will always be a valid page to evict
+            pair<int, unsigned int> top = heap->pop();
             page_map.erase(top.second);
         }
 
@@ -337,7 +333,7 @@ private:
     void updatePage(unsigned int vpn) {
         Queue* future_queue = future_map[vpn];
         
-        if (!future_queue->empty() && future_queue->front_element() <= current_index) {
+        while (!future_queue->empty() && future_queue->front_element() <= current_index) {
             future_queue->pop();
         }
 
