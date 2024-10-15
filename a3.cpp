@@ -112,23 +112,15 @@ protected:
     int capacity;
     int size;
     unsigned int page_size_kb;
-    unsigned int offset_bits;
 
-    // Calculate Virtual Page Number from physical address
+    // Simplified VPN calculation
     unsigned int getVPN(unsigned int address) {
-        return address >> offset_bits;
+        return address / (1024 * page_size_kb);
     }
+
 
 public:
-    TLB(int cap, int page_size_kb) : capacity(cap), size(0), page_size_kb(page_size_kb) {
-        // Calculate number of offset bits based on page size
-        unsigned int page_size_bytes = page_size_kb * 1024;
-        offset_bits = 0;
-        while (page_size_bytes > 1) {
-            page_size_bytes >>= 1;
-            offset_bits++;
-        }
-    }
+    TLB(int cap, int page_size_kb) : capacity(cap), size(0), page_size_kb(page_size_kb) {}
     virtual ~TLB() {}
     virtual bool access(unsigned int address) = 0;
 };
