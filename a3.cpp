@@ -343,13 +343,13 @@ private:
 };
 
 // Main simulation function to test different TLB replacement policies
-void simulate(unsigned int* addresses, int N, int address_space_size, int page_size, int tlb_size) {
+void simulate(unsigned int* addresses, int N, int address_space_size, int page_size, int tlb_size, int* hits) {
     FIFO fifo_tlb(tlb_size, page_size);
     LIFO lifo_tlb(tlb_size, page_size);
     LRU lru_tlb(tlb_size, page_size);
     OPT opt_tlb(tlb_size, page_size, addresses, N);
     
-    int hits[4] = {0};  // Track hits for each algorithm
+    for (int i = 0; i < 4; i++) hits[i] = 0;  // Initialize hits for each algorithm
     
     // Process each address through all TLB implementations
     for (int i = 0; i < N; i++) {
@@ -358,33 +358,57 @@ void simulate(unsigned int* addresses, int N, int address_space_size, int page_s
         if (lru_tlb.access(addresses[i])) hits[2]++;
         if (opt_tlb.access(addresses[i])) hits[3]++;
     }
-    
-    // Output results: FIFO, LIFO, LRU, OPT hits
-    cout << hits[0] << " " << hits[1] << " " << hits[2] << " " << hits[3] << endl;
 }
 
 int main() {
     int T;
     cin >> T;  // Number of test cases
     
-    while (T--) {
-        int address_space_size_mb, page_size_kb, tlb_size, N;
-        cin >> address_space_size_mb >> page_size_kb >> tlb_size >> N;
+    // Arrays to store all input and results
+    int* all_address_space_sizes = new int[T];
+    int* all_page_sizes = new int[T];
+    int* all_tlb_sizes = new int[T];
+    int* all_N = new int[T];
+    unsigned int** all_addresses = new unsigned int*[T];
+    int** all_results = new int*[T];
+    
+    // Read all input first
+    for (int t = 0; t < T; t++) {
+        cin >> all_address_space_sizes[t] >> all_page_sizes[t] >> all_tlb_sizes[t] >> all_N[t];
         
-        // Convert address space size from MB to bytes
-        unsigned long long address_space_size = static_cast<unsigned long long>(address_space_size_mb) * 1024 * 1024;
-        
-        // Read addresses in hexadecimal format
-        unsigned int* addresses = new unsigned int[N];
-        for (int i = 0; i < N; i++) {
-            cin >> hex >> addresses[i];
+        all_addresses[t] = new unsigned int[all_N[t]];
+        for (int i = 0; i < all_N[t]; i++) {
+            cin >> hex >> all_addresses[t][i];
         }
         
-        simulate(addresses, N, address_space_size, page_size_kb, tlb_size);
+        all_results[t] = new int[4];  // To store hits for FIFO, LIFO, LRU, OPT
         
-        delete[] addresses;
         cin >> dec;  // Reset to decimal mode for next test case
     }
+    
+    // Process all test cases
+    for (int t = 0; t < T; t++) {
+        unsigned long long address_space_size = static_cast<unsigned long long>(all_address_space_sizes[t]) * 1024 * 1024;
+        simulate(all_addresses[t], all_N[t], address_space_size, all_page_sizes[t], all_tlb_sizes[t], all_results[t]);
+    }
+    
+    // Print all results
+    for (int t = 0; t < T; t++) {
+        cout << all_results[t][0] << " " << all_results[t][1] << " " 
+             << all_results[t][2] << " " << all_results[t][3] << endl;
+    }
+    
+    // Clean up dynamically allocated memory
+    for (int t = 0; t < T; t++) {
+        delete[] all_addresses[t];
+        delete[] all_results[t];
+    }
+    delete[] all_address_space_sizes;
+    delete[] all_page_sizes;
+    delete[] all_tlb_sizes;
+    delete[] all_N;
+    delete[] all_addresses;
+    delete[] all_results;
     
     return 0;
 }
