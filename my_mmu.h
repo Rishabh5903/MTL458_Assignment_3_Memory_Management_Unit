@@ -10,13 +10,12 @@
 #define ALIGNMENT 8
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~(ALIGNMENT-1))
 #define BLOCK_SIZE sizeof(block_t)
-#define MIN_ALLOC_SIZE (128 * 1024)  // 128KB minimum allocation
 
 typedef struct block {
     size_t size;
     int free;
     struct block *next;
-    struct block *prev;  
+    struct block *prev;
 } block_t;
 
 static block_t *free_list = NULL;
@@ -33,9 +32,9 @@ static struct {
     size_t coalesce_operations;
 } debug_counters = {0};
 
+// Function to allocate memory from the system using mmap
 static void *allocate_from_system(size_t size) {
-    size_t alloc_size = (size > MIN_ALLOC_SIZE) ? size : MIN_ALLOC_SIZE;
-    alloc_size = ALIGN(alloc_size);
+    size_t alloc_size = ALIGN(size + BLOCK_SIZE);
     
     debug_counters.mmap_calls++;
     void *block = mmap(NULL, alloc_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -45,6 +44,7 @@ static void *allocate_from_system(size_t size) {
     return block;
 }
 
+// Find a free block in the free list
 static block_t *find_free_block(block_t **last, size_t size) {
     block_t *current = free_list;
     while (current && !(current->free && current->size >= size)) {
@@ -54,19 +54,22 @@ static block_t *find_free_block(block_t **last, size_t size) {
     return current;
 }
 
+// Split the block if it's large enough
 static void split_block(block_t *block, size_t size) {
-    block_t *new_block;
     if (block->size >= size + BLOCK_SIZE + ALIGNMENT) {
         debug_counters.split_blocks++;
-        new_block = (block_t *)((char *)block + size + BLOCK_SIZE);
+        block_t *new_block = (block_t *)((char *)block + size + BLOCK_SIZE);
         new_block->size = block->size - size - BLOCK_SIZE;
         new_block->free = 1;
         new_block->next = block->next;
+        new_block->prev = block;
+        if (block->next) block->next->prev = new_block;
         block->size = size;
         block->next = new_block;
     }
 }
 
+// Coalesce adjacent free blocks
 static void coalesce() {
     block_t *current = free_list;
     while (current && current->next) {
@@ -75,12 +78,16 @@ static void coalesce() {
             debug_counters.coalesce_operations++;
             current->size += BLOCK_SIZE + current->next->size;
             current->next = current->next->next;
+            if (current->next) {
+                current->next->prev = current;
+            }
         } else {
             current = current->next;
         }
     }
 }
 
+// Custom malloc function
 void *my_malloc(size_t size) {
     debug_counters.malloc_calls++;
     if (size == 0) return NULL;
@@ -88,12 +95,12 @@ void *my_malloc(size_t size) {
     size_t aligned_size = ALIGN(size);
     block_t *block, *last = NULL;
 
+    // Find a free block or allocate a new one
     if ((block = find_free_block(&last, aligned_size))) {
         block->free = 0;
         split_block(block, aligned_size);
     } else {
-        size_t alloc_size = (aligned_size + BLOCK_SIZE > MIN_ALLOC_SIZE) ? 
-                            (aligned_size + BLOCK_SIZE) : MIN_ALLOC_SIZE;
+        size_t alloc_size = aligned_size + BLOCK_SIZE;
         
         block = allocate_from_system(alloc_size);
         if (!block) return NULL;
@@ -115,6 +122,7 @@ void *my_malloc(size_t size) {
     return (void *)(block + 1);
 }
 
+// Custom calloc function
 void *my_calloc(size_t nmemb, size_t size) {
     debug_counters.calloc_calls++;
     size_t total_size = nmemb * size;
@@ -125,6 +133,7 @@ void *my_calloc(size_t nmemb, size_t size) {
     return ptr;
 }
 
+// Custom free function
 void my_free(void *ptr) {
     debug_counters.free_calls++;
     if (!ptr) return;
@@ -134,7 +143,7 @@ void my_free(void *ptr) {
 
     coalesce();
 
-    // Check if this is the only block and it's free
+    // If the block is the only one in the free list and it's free, unmap it
     if (block->prev == NULL && block->next == NULL) {
         debug_counters.munmap_calls++;
         munmap(block, block->size + BLOCK_SIZE);
@@ -142,6 +151,7 @@ void my_free(void *ptr) {
     }
 }
 
+// Custom realloc function
 void *my_realloc(void *ptr, size_t size) {
     debug_counters.realloc_calls++;
     if (!ptr) return my_malloc(size);
