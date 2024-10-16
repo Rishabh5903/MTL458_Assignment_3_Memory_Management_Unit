@@ -108,6 +108,7 @@
     "typeinfo": "cpp",
     "chrono": "cpp",
     "ratio": "cpp",
-    "fstream": "cpp"
+    "fstream": "cpp",
+    "my_mmu_shivam.h": "c"
   }
 }
