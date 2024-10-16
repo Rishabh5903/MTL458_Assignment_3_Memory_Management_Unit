@@ -1,39 +1,42 @@
-#include <stdio.h>
-#include <stdlib.h>
+#include <stddef.h>
 #include <sys/mman.h>
-#include <string.h>
 #include <unistd.h>
-#include <errno.h>
+#include <string.h>
 
-#define ALIGNMENT 16
+#define ALIGNMENT 8
 #define ALIGN(size) (((size) + (ALIGNMENT-1)) & ~(ALIGNMENT-1))
-#define META_SIZE ALIGN(sizeof(struct block_meta))
-#define MMAP_THRESHOLD 131072 // mmap for large allocations (> 128KB)
+#define BLOCK_SIZE sizeof(block_t)
 
-struct block_meta {
+typedef struct block {
     size_t size;
-    int is_mmap;
-    struct block_meta *next;
     int free;
-};
+    struct block *next;
+} block_t;
 
-static struct block_meta *head = NULL;
+static block_t *free_list = NULL;
 
-static struct block_meta *find_free_block(size_t size) {
-    struct block_meta *current = head;
-    while (current) {
-        if (current->free && current->size >= size)
-            return current;
-        current = current->next;
+static void *allocate_from_system(size_t size) {
+    void *block = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (block == MAP_FAILED) {
+        return NULL;
     }
-    return NULL;
+    return block;
 }
 
-static void split_block(struct block_meta *block, size_t size) {
-    if (block->size >= size + META_SIZE + ALIGNMENT) {
-        struct block_meta *new_block = (void*)((char*)block + META_SIZE + size);
-        new_block->size = block->size - size - META_SIZE;
-        new_block->is_mmap = 0;
+static block_t *find_free_block(block_t **last, size_t size) {
+    block_t *current = free_list;
+    while (current && !(current->free && current->size >= size)) {
+        *last = current;
+        current = current->next;
+    }
+    return current;
+}
+
+static void split_block(block_t *block, size_t size) {
+    block_t *new_block;
+    if (block->size >= size + BLOCK_SIZE + ALIGNMENT) {
+        new_block = (block_t *)((char *)block + size + BLOCK_SIZE);
+        new_block->size = block->size - size - BLOCK_SIZE;
         new_block->free = 1;
         new_block->next = block->next;
         block->size = size;
@@ -41,60 +44,48 @@ static void split_block(struct block_meta *block, size_t size) {
     }
 }
 
-static void *allocate_with_mmap(size_t size) {
-    size_t total_size = ALIGN(size + META_SIZE);
-    if (total_size < MMAP_THRESHOLD) {
-        total_size = MMAP_THRESHOLD;
+static void coalesce() {
+    block_t *current = free_list;
+    while (current && current->next) {
+        if (current->free && current->next->free &&
+            (char *)current + current->size + BLOCK_SIZE == (char *)current->next) {
+            current->size += BLOCK_SIZE + current->next->size;
+            current->next = current->next->next;
+        } else {
+            current = current->next;
+        }
     }
-    void *ptr = mmap(NULL, total_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (ptr == MAP_FAILED) {
-        return NULL;
-    }
-    struct block_meta *block = ptr;
-    block->size = total_size - META_SIZE;
-    block->is_mmap = 1;
-    block->free = 0;
-    block->next = NULL;
-    return block;
 }
 
-void* my_malloc(size_t size) {
+void *my_malloc(size_t size) {
     if (size == 0) return NULL;
 
     size_t aligned_size = ALIGN(size);
-    struct block_meta *block;
+    block_t *block, *last = NULL;
 
-    if (aligned_size + META_SIZE >= MMAP_THRESHOLD) {
-        // Use mmap for large allocations
-        block = allocate_with_mmap(aligned_size);
-        if (!block) return NULL;
+    if ((block = find_free_block(&last, aligned_size))) {
+        block->free = 0;
+        split_block(block, aligned_size);
     } else {
-        block = find_free_block(aligned_size);
-        if (!block) {
-            // No free block found, allocate new memory
-            block = sbrk(0);
-            void *request = sbrk(aligned_size + META_SIZE);
-            if (request == (void*) -1) {
-                return NULL;
-            }
-            block->size = aligned_size;
-            block->is_mmap = 0;
-            block->next = NULL;
-            block->free = 0;
+        block = allocate_from_system(aligned_size + BLOCK_SIZE);
+        if (!block) return NULL;
+
+        block->size = aligned_size;
+        block->free = 0;
+        block->next = NULL;
+
+        if (!free_list) {
+            free_list = block;
         } else {
-            // Found a free block
-            block->free = 0;
-            split_block(block, aligned_size);
+            last->next = block;
         }
     }
 
-    if (!head) head = block;
-
-    return (block + 1);
+    return (void *)(block + 1);
 }
 
-void* my_calloc(size_t nelem, size_t size) {
-    size_t total_size = nelem * size;
+void *my_calloc(size_t nmemb, size_t size) {
+    size_t total_size = nmemb * size;
     void *ptr = my_malloc(total_size);
     if (ptr) {
         memset(ptr, 0, total_size);
@@ -102,33 +93,33 @@ void* my_calloc(size_t nelem, size_t size) {
     return ptr;
 }
 
-void my_free(void* ptr) {
+void my_free(void *ptr) {
     if (!ptr) return;
 
-    struct block_meta *block_ptr = (struct block_meta*)ptr - 1;
+    block_t *block = (block_t *)ptr - 1;
+    block->free = 1;
 
-    if (block_ptr->is_mmap) {
-        // Free memory allocated with mmap
-        munmap(block_ptr, block_ptr->size + META_SIZE);
-    } else {
-        // Mark the block as free
-        block_ptr->free = 1;
+    coalesce();
+}
 
-        // Coalesce with next block if it's free
-        if (block_ptr->next && block_ptr->next->free) {
-            block_ptr->size += block_ptr->next->size + META_SIZE;
-            block_ptr->next = block_ptr->next->next;
-        }
-
-        // Coalesce with previous block if it's free
-        struct block_meta *current = head;
-        while (current && current->next) {
-            if (current->free && (void*)((char*)current + current->size + META_SIZE) == block_ptr) {
-                current->size += block_ptr->size + META_SIZE;
-                current->next = block_ptr->next;
-                break;
-            }
-            current = current->next;
-        }
+void *my_realloc(void *ptr, size_t size) {
+    if (!ptr) return my_malloc(size);
+    if (size == 0) {
+        my_free(ptr);
+        return NULL;
     }
+
+    block_t *block = (block_t *)ptr - 1;
+    if (block->size >= size) {
+        split_block(block, size);
+        return ptr;
+    }
+
+    void *new_ptr = my_malloc(size);
+    if (!new_ptr) return NULL;
+
+    memcpy(new_ptr, ptr, block->size);
+    my_free(ptr);
+
+    return new_ptr;
 }
