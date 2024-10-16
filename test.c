@@ -3,7 +3,7 @@
 #include <string.h>
 #include <assert.h>
 #include <time.h>
-#include "mmu.h"
+#include "my_mmu.h"
 
 #define NUM_ALLOCS 5000 // Number of allocations to perform
 #define MAX_ALLOC_SIZE 10000 // Maximum size for allocation

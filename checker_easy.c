@@ -188,23 +188,16 @@ void stress_test(int iterations) {
 }
 
 int main() {
-    // Test memory alignment
+    // Run your tests here
     test_alignment();
-
-    // Test fragmentation and memory reuse
     test_fragmentation();
-
-    // Test large allocations
     test_large_allocations();
-
-    // Test random allocation patterns
     test_random_allocations();
-
-    // Test boundary conditions
     test_boundary_conditions();
-
-    // Run stress test (increase the number of iterations for more rigor)
     stress_test(500);
+
+    // Print debug information
+    // print_debug_counters();
 
     return 0;
 }
